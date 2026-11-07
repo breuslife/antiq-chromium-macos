@@ -20,6 +20,7 @@ if [[ -f "$_root_dir/build_finished_$_target_cpu.log" ]] ; then
 
   xattr -cs out/Default/Chromium.app
 
+  if [[ -n "${MACOS_CERTIFICATE:-}" ]]; then
   # Prepar the certificate for app signing
   echo $MACOS_CERTIFICATE | base64 --decode > "$TMPDIR/certificate.p12"
 
@@ -55,6 +56,11 @@ if [[ -f "$_root_dir/build_finished_$_target_cpu.log" ]] ; then
     --team-id "$PROD_MACOS_NOTARIZATION_TEAM_ID" \
     --password "$PROD_MACOS_NOTARIZATION_PWD"
   xcrun stapler staple "out/Default/Chromium.app"
+
+  else
+    # No Apple certificate in this repo: ad-hoc signature, no notarization
+    codesign --force --deep --sign - out/Default/Chromium.app
+  fi
 
   # Package the app
   chrome/installer/mac/pkg-dmg \
