@@ -1,0 +1,49 @@
+name: Relay next build stage
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: relay
+  cancel-in-progress: false
+
+jobs:
+  relay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Start the next stage when the last one ended with progress
+        run: |
+          set -euo pipefail
+          runs=$(gh run list -w finish.yml -L 2 --json databaseId,status -q '.[] | "\(.databaseId) \(.status)"')
+          read -r last status <<< "$(sed -n 1p <<< "$runs")"
+          prev=$(sed -n 2p <<< "$runs" | cut -d' ' -f1)
+          echo "last=$last status=$status prev=$prev"
+          if [ "$status" != completed ]; then echo "stage still running"; exit 0; fi
+
+          dmg=$(gh api "repos/$GH_REPO/actions/runs/$last/artifacts" --jq '[.artifacts[].name | select(endswith(".dmg"))] | length')
+          if [ "$dmg" != 0 ]; then echo "DONE: dmg is in run $last"; exit 0; fi
+
+          # Three stages started from day-old archives on 07-08.11 and never moved past ~31k
+          # steps, so every new stage must shrink the remaining step count.
+          left() { gh run view "$1" --log 2>/dev/null | grep -aoE '\[[0-9]+/[0-9]+\]' | tail -1 | tr -d '[]' | awk -F/ '{print $2-$1}'; }
+          now=$(left "$last"); before=$(left "$prev")
+          echo "remaining steps: before=$before now=$now"
+          if [ -z "$now" ] || [ -z "$before" ] || [ "$now" -ge "$before" ]; then
+            echo "::error::no progress (before=$before now=$now), chain stopped"
+            exit 1
+          fi
+          recent=$(gh run list -w finish.yml -L 20 --json createdAt -q "[.[] | select(.createdAt > \"$(date -u -d '-3 days' +%FT%TZ)\")] | length")
+          if [ "$recent" -ge 8 ]; then echo "::error::$recent stages in 3 days, chain stopped"; exit 1; fi
+
+          gh workflow run finish.yml -f source_run="$last" -f arch=x86_64
+          echo "started next stage from run $last"
