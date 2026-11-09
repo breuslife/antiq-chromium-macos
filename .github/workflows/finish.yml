@@ -12,7 +12,7 @@ on:
         default: x86_64
 
 permissions:
-  actions: read
+  actions: write
   contents: read
 
 defaults:
@@ -81,3 +81,8 @@ jobs:
           path: |
             ./release_asset/${{ steps.bake.outputs.file_name }}
             ./${{ steps.bake.outputs.file_name }}.hashes.md
+      - name: Hand over to the relay right away
+        if: ${{ !cancelled() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run relay.yml --repo ${{ github.repository }}
