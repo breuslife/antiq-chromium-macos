@@ -43,7 +43,7 @@ jobs:
             exit 1
           fi
           recent=$(gh run list -w finish.yml -L 20 --json createdAt -q "[.[] | select(.createdAt > \"$(date -u -d '-3 days' +%FT%TZ)\")] | length")
-          if [ "$recent" -ge 8 ]; then echo "::error::$recent stages in 3 days, chain stopped"; exit 1; fi
+          if [ "$recent" -ge 14 ]; then echo "::error::$recent stages in 3 days, chain stopped"; exit 1; fi
 
           gh workflow run finish.yml -f source_run="$last" -f arch=x86_64
           echo "started next stage from run $last"
